@@ -92,6 +92,7 @@ struct dsi_backlight_config {
 	u32 bl_level;
 	u32 bl_scale;
 	u32 bl_scale_ad;
+	bool bl_high2bit;
 
 	int en_gpio;
 	/* PWM params */
@@ -140,6 +141,15 @@ struct drm_panel_esd_config {
 	u32 groups;
 };
 
+enum dsi_panel_display_mode {
+	DISPLAY_MODE_DEFAULT,
+	DISPLAY_MODE_SRGB,
+	DISPLAY_MODE_DCI_P3,
+	DISPLAY_MODE_NIGHT,
+	DISPLAY_MODE_ONEPLUS,
+	DISPLAY_MODE_ADAPTION
+};
+
 struct dsi_panel {
 	const char *name;
 	struct device_node *panel_of_node;
@@ -167,6 +177,9 @@ struct dsi_panel {
 	struct dsi_pinctrl_info pinctrl;
 	struct drm_panel_hdr_properties hdr_props;
 	struct drm_panel_esd_config esd_config;
+
+	int hbm_mode;
+	enum dsi_panel_display_mode display_mode;
 
 	bool lp11_init;
 	bool ulps_enabled;
@@ -257,6 +270,10 @@ int dsi_panel_disable(struct dsi_panel *panel);
 int dsi_panel_unprepare(struct dsi_panel *panel);
 
 int dsi_panel_post_unprepare(struct dsi_panel *panel);
+
+int dsi_panel_apply_hbm_mode(struct dsi_panel *panel);
+
+int dsi_panel_apply_display_mode(struct dsi_panel *panel);
 
 int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl);
 

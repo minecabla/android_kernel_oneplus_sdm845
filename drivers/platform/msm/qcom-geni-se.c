@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -157,38 +157,6 @@ int get_se_proto(void __iomem *base)
 }
 EXPORT_SYMBOL(get_se_proto);
 
-/**
- * get_se_m_fw() - Read the Firmware ver for the Main seqeuncer engine
- * @base:	Base address of the serial engine's register block.
- *
- * Return:	Firmware version for the Main seqeuncer engine
- */
-int get_se_m_fw(void __iomem *base)
-{
-	int fw_ver_m;
-
-	fw_ver_m = ((geni_read_reg(base, GENI_FW_REVISION_RO)
-			& FW_REV_VERSION_MSK));
-	return fw_ver_m;
-}
-EXPORT_SYMBOL(get_se_m_fw);
-
-/**
- * get_se_s_fw() - Read the Firmware ver for the Secondry seqeuncer engine
- * @base:	Base address of the serial engine's register block.
- *
- * Return:	Firmware version for the Secondry seqeuncer engine
- */
-int get_se_s_fw(void __iomem *base)
-{
-	int fw_ver_s;
-
-	fw_ver_s = ((geni_read_reg(base, GENI_FW_S_REVISION_RO)
-			& FW_REV_VERSION_MSK));
-	return fw_ver_s;
-}
-EXPORT_SYMBOL(get_se_s_fw);
-
 static int se_geni_irq_en(void __iomem *base)
 {
 	unsigned int common_geni_m_irq_en;
@@ -309,7 +277,9 @@ static int geni_se_select_fifo_mode(void __iomem *base)
 
 static int geni_se_select_dma_mode(void __iomem *base)
 {
+	int proto = get_se_proto(base);
 	unsigned int geni_dma_mode = 0;
+	unsigned int common_geni_m_irq_en;
 
 	geni_write_reg(0, base, SE_GSI_EVENT_EN);
 	geni_write_reg(0xFFFFFFFF, base, SE_GENI_M_IRQ_CLEAR);
@@ -318,6 +288,12 @@ static int geni_se_select_dma_mode(void __iomem *base)
 	geni_write_reg(0xFFFFFFFF, base, SE_DMA_RX_IRQ_CLR);
 	geni_write_reg(0xFFFFFFFF, base, SE_IRQ_EN);
 
+	common_geni_m_irq_en = geni_read_reg(base, SE_GENI_M_IRQ_EN);
+	if (proto != UART)
+		common_geni_m_irq_en &=
+			~(M_TX_FIFO_WATERMARK_EN | M_RX_FIFO_WATERMARK_EN);
+
+	geni_write_reg(common_geni_m_irq_en, base, SE_GENI_M_IRQ_EN);
 	geni_dma_mode = geni_read_reg(base, SE_GENI_DMA_MODE_EN);
 	geni_dma_mode |= GENI_DMA_MODE_EN;
 	geni_write_reg(geni_dma_mode, base, SE_GENI_DMA_MODE_EN);

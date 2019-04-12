@@ -461,7 +461,7 @@ static int dsi_ctrl_init_regmap(struct platform_device *pdev,
 	}
 
 	ctrl->hw.base = ptr;
-	pr_debug("[%s] map dsi_ctrl registers to %p\n", ctrl->name,
+	pr_debug("[%s] map dsi_ctrl registers to %pK\n", ctrl->name,
 		 ctrl->hw.base);
 
 	switch (ctrl->version) {
@@ -1260,6 +1260,7 @@ static int dsi_set_max_return_size(struct dsi_ctrl *dsi_ctrl,
 		.type = MIPI_DSI_SET_MAXIMUM_RETURN_PACKET_SIZE,
 		.tx_len = 2,
 		.tx_buf = tx,
+		.flags = rx_msg->flags,
 	};
 
 	rc = dsi_message_tx(dsi_ctrl, &msg, flags);

@@ -636,7 +636,11 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 
 	mutex_lock(&panel->panel_lock);
 
-	rc = mipi_dsi_dcs_set_display_brightness(dsi, bl_lvl);
+	if (panel->bl_config.bl_high2bit) {
+		rc = mipi_dsi_dcs_set_display_brightness_samsung(dsi, bl_lvl);
+	} else {
+		rc = mipi_dsi_dcs_set_display_brightness(dsi, bl_lvl);
+	}
 	if (rc < 0)
 		pr_err("failed to update dcs backlight:%d\n", bl_lvl);
 
@@ -1406,6 +1410,18 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"ROI not parsed from DTSI, generated dynamically",
 	"qcom,mdss-dsi-timing-switch-command",
 	"qcom,mdss-dsi-post-mode-switch-on-command",
+	"qcom,mdss-dsi-panel-hbm-off-command",
+	"qcom,mdss-dsi-panel-hbm-on-command",
+	"qcom,mdss-dsi-panel-hbm-on-command-2",
+	"qcom,mdss-dsi-panel-hbm-on-command-3",
+	"qcom,mdss-dsi-panel-hbm-on-command-4",
+	"qcom,mdss-dsi-panel-hbm-on-command-5",
+	"qcom,mdss-dsi-panel-srgb-on-command",
+	"qcom,mdss-dsi-panel-dci-p3-on-command",
+	"qcom,mdss-dsi-panel-night-mode-on-command",
+	"qcom,mdss-dsi-panel-oneplus-mode-on-command",
+	"qcom,mdss-dsi-panel-adaption-mode-on-command",
+	"qcom,mdss-dsi-panel-srgb-off-command", // also disables DCI P3, night and OP modes
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -1430,6 +1446,18 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"ROI not parsed from DTSI, generated dynamically",
 	"qcom,mdss-dsi-timing-switch-command-state",
 	"qcom,mdss-dsi-post-mode-switch-on-command-state",
+	"qcom,mdss-dsi-hbm-off-command-state",
+	"qcom,mdss-dsi-hbm-on-command-state",
+	"qcom,mdss-dsi-hbm-on-command-state",
+	"qcom,mdss-dsi-hbm-on-command-state",
+	"qcom,mdss-dsi-hbm-on-command-state",
+	"qcom,mdss-dsi-hbm-on-command-state",
+	"qcom,mdss-dsi-srgb-on-command-state",
+	"qcom,mdss-dsi-dci-p3-on-command-state",
+	"qcom,mdss-dsi-night-mode-on-command-state",
+	"qcom,mdss-dsi-panel-oneplus-mode-on-command-state",
+	"qcom,mdss-dsi-adaption-mode-on-command-state",
+	"qcom,mdss-dsi-srgb-off-command-state",
 };
 
 static int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -2790,6 +2818,22 @@ error:
 	return rc;
 }
 
+static int dsi_panel_parse_oem_config(struct dsi_panel *panel,
+				     struct device_node *of_node)
+{
+	panel->lp11_init = of_property_read_bool(of_node,
+		"qcom,mdss-dsi-lp11-init");
+	if (panel->lp11_init)
+		pr_debug("lp11_init: %d\n", panel->lp11_init);
+
+	panel->bl_config.bl_high2bit = of_property_read_bool(of_node,
+		"qcom,mdss-bl-high2bit");
+	if (panel->bl_config.bl_high2bit)
+		pr_debug("bl_high2bit: %d\n", panel->bl_config.bl_high2bit);
+
+	return 0;
+}
+
 struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *of_node,
 				int topology_override)
@@ -2862,6 +2906,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	rc = dsi_panel_parse_esd_config(panel, of_node);
 	if (rc)
 		pr_debug("failed to parse esd config, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_oem_config(panel, of_node);
+	if (rc)
+		pr_debug("failed to get oem config, rc=%d\n", rc);
 
 	panel->panel_of_node = of_node;
 	drm_panel_init(&panel->drm_panel);
@@ -3522,6 +3570,12 @@ int dsi_panel_enable(struct dsi_panel *panel)
 	}
 	panel->panel_initialized = true;
 	mutex_unlock(&panel->panel_lock);
+
+	if (panel->hbm_mode)
+		dsi_panel_apply_hbm_mode(panel);
+	if (panel->display_mode != DISPLAY_MODE_DEFAULT)
+		dsi_panel_apply_display_mode(panel);
+
 	return rc;
 }
 
@@ -3646,5 +3700,52 @@ int dsi_panel_post_unprepare(struct dsi_panel *panel)
 	}
 error:
 	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
+{
+	static const enum dsi_cmd_set_type type_map[] = {
+		DSI_CMD_SET_HBM_OFF,
+		DSI_CMD_SET_HBM_ON_1,
+		DSI_CMD_SET_HBM_ON_2,
+		DSI_CMD_SET_HBM_ON_3,
+		DSI_CMD_SET_HBM_ON_4,
+		DSI_CMD_SET_HBM_ON_5
+	};
+
+	enum dsi_cmd_set_type type;
+	int rc;
+
+	if (panel->hbm_mode >= 0 && panel->hbm_mode < ARRAY_SIZE(type_map))
+		type = type_map[panel->hbm_mode];
+	else
+		type = DSI_CMD_SET_HBM_OFF;
+
+	mutex_lock(&panel->panel_lock);
+	rc = dsi_panel_tx_cmd_set(panel, type);
+	mutex_unlock(&panel->panel_lock);
+
+	return rc;
+}
+
+int dsi_panel_apply_display_mode(struct dsi_panel *panel)
+{
+	enum dsi_cmd_set_type type;
+	int rc;
+
+	switch (panel->display_mode) {
+		case DISPLAY_MODE_SRGB: type = DSI_CMD_SET_MODE_SRGB; break;
+		case DISPLAY_MODE_DCI_P3: type = DSI_CMD_SET_MODE_DCI_P3; break;
+		case DISPLAY_MODE_NIGHT: type = DSI_CMD_SET_MODE_NIGHT; break;
+		case DISPLAY_MODE_ONEPLUS: type = DSI_CMD_SET_MODE_ONEPLUS; break;
+		case DISPLAY_MODE_ADAPTION: type = DSI_CMD_SET_MODE_ADAPTION; break;
+		default: type = DSI_CMD_SET_MODE_DEFAULT; break;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	rc = dsi_panel_tx_cmd_set(panel, type);
+	mutex_unlock(&panel->panel_lock);
+
 	return rc;
 }
